@@ -44,6 +44,7 @@ jobs:
 
 
       - name: Run Trivy filesystem scan for console output
+        id: trivy_console
         continue-on-error: true
         shell: bash
         run: |
@@ -55,9 +56,10 @@ jobs:
             --severity HIGH,CRITICAL \
             --include-dev-deps \
             --format table \
-            --exit-code 0
+            --exit-code 1
 
       - name: Run Trivy filesystem scan for SARIF
+        id: trivy_sarif
         continue-on-error: true
         shell: bash
         run: |
@@ -70,7 +72,7 @@ jobs:
             --include-dev-deps \
             --format sarif \
             --output trivy-fs-results.sarif \
-            --exit-code 0
+            --exit-code 1
 
       - name: Upload Trivy SARIF to GitHub Security
         if: always()
@@ -82,11 +84,21 @@ jobs:
 
       - name: Upload Trivy SARIF artifact
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: trivy-fs-results
           path: trivy-fs-results.sarif
-          if-no-files-found: error
+          if-no-files-found: warn
+
+      - name: Fail if Trivy found issues
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ steps.trivy_console.outcome }}" == "failure" || "${{ steps.trivy_sarif.outcome }}" == "failure" ]]; then
+            echo "::error::Trivy detected HIGH/CRITICAL vulnerabilities or misconfigurations."
+            exit 1
+          fi
 
   gitleaks:
     name: Gitleaks
@@ -109,7 +121,20 @@ jobs:
           sudo mv gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
+      - name: Run Gitleaks console scan
+        id: gitleaks_console
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          gitleaks detect \
+            --source . \
+            --config .gitleaks.toml \
+            --redact \
+            --verbose
+
       - name: Run Gitleaks SARIF scan
+        id: gitleaks_sarif
         continue-on-error: true
         shell: bash
         run: |
@@ -131,8 +156,18 @@ jobs:
 
       - name: Upload Gitleaks SARIF artifact
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-results
           path: gitleaks-results.sarif
-          if-no-files-found: error
+          if-no-files-found: warn
+
+      - name: Fail if Gitleaks found issues
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ steps.gitleaks_console.outcome }}" == "failure" || "${{ steps.gitleaks_sarif.outcome }}" == "failure" ]]; then
+            echo "::error::Gitleaks detected secrets in the repository."
+            exit 1
+          fi

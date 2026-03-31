@@ -1,0 +1,8 @@
+/openbox_deepagent/__pycache__
+test-agent/.env
+/tests/__pycache__
+plans/
+.claude/
+.idea
+CLAUDE.mdư
+.vscode
